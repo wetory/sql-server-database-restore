@@ -1,18 +1,18 @@
 /*  
-	Title: SQL Server Database Restore - deployment script
-	Description: Script is creating standardized restore procedures that can be used for regular restored of database, for example from PROD to DEV environment. Highly tied with
-	from Olla Hallengreen's maintenance solution https://ola.hallengren.com/ as it is using its CommandLog table and CommandExecute stored procedure. So can and should co-exist 
-	together with this maintenance on same instance :)
+Title: SQL Server Database Restore - deployment script
+Description: Script is creating standardized restore procedures that can be used for regular restored of database, for example from PROD to DEV environment. Highly tied with
+from Olla Hallengreen's maintenance solution https://ola.hallengren.com/ as it is using its CommandLog table and CommandExecute stored procedure. So can and should co-exist 
+together with this maintenance on same instance :)
 
-	It is creating following stuff in SQL Server instance:
-		- stored procedures in master database
+It is creating following stuff in SQL Server instance:
+	- stored procedures in master database
 
-	Author: Tomas Rybnicky 
-	Date of last update: 
-	 v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+Author: Tomas Rybnicky 
+Date of last update: 
+	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
 
-	List of previous revisions:
-	 v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
+List of previous revisions:
+	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 */
 USE [master]
 GO

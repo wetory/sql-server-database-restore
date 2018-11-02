@@ -8,23 +8,23 @@ IF OBJECT_ID('[dbo].[AddDatabaseOnSecondary]') IS NOT NULL DROP PROCEDURE [dbo].
 GO
 CREATE PROCEDURE [dbo].[AddDatabaseOnSecondary]
 /* 
-	Purpose:		This procedure can be used for regular restores of database that is part of availability group. this procedure is called on secondary
-					replica and adding given database to availability groupin folowwing steps:
-					- restore given full backup
-					- restore given backup of transaction log
-					- join database to availability group on secondary
+Purpose: This procedure can be used for regular restores of database that is part of availability group. this procedure is called on secondary
+replica and adding given database to availability groupin folowwing steps:
+ - restore given full backup
+ - restore given backup of transaction log
+ - join database to availability group on secondary
 
-	Author:			Tomas Rybnicky
-	Version:		0.1
-	Last modified:	31.10.2018
+Author:	Tomas Rybnicky
+Version: 0.1
+Last modified: 31.10.2018
 	
-	Execution example:					
-					EXEC [master].[dbo].[AddDatabaseOnSecondary]
-					@FullBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_AG_init.bak',
-					@TlogBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_20181031164726',
-					@Database = N'healthcheck',
-					@AvailabilityGroup = N'SQLCLO2PRODAG',
-					@LogToTable = 'Y'
+Execution example:					
+	EXEC [master].[dbo].[AddDatabaseOnSecondary]
+	@FullBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_AG_init.bak',
+	@TlogBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_20181031164726',
+	@Database = N'healthcheck',
+	@AvailabilityGroup = N'SQLCLO2PRODAG',
+	@LogToTable = 'Y'
 					
 */
 @FullBackupFile		NVARCHAR(1024),			-- Database backup file taken on primary replica
