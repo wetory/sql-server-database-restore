@@ -121,7 +121,7 @@ BEGIN
 		@Command = @Tsql,
 		@CommandType = 'RESTORE_DATABASE',
 		@DatabaseName = @Database,
-		@Mode = 2,
+		@Mode = 1,
 		@LogToTable = @LogToTable,
 		@Execute = 'Y'
 
@@ -137,7 +137,7 @@ BEGIN
 		@Command = @Tsql,
 		@CommandType = 'RESTORE_LOG',
 		@DatabaseName = @Database,
-		@Mode = 2,
+		@Mode = 1,
 		@LogToTable = @LogToTable,
 		@Execute = 'Y'
 
@@ -209,5 +209,3 @@ BEGIN
 	----------------------------------------------------------------------------------------
 	EndOfFile:
 END
-
-
