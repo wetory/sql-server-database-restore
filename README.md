@@ -6,7 +6,7 @@ Table of content
   * [Deployment](#deployment)
   * [Execution of stored procedures](#execution-of-stored-procedures)
   * [Possible problems](#possible-problems)
-  * [Versions:](#versions-)
+  * [Versions](#versions)
 
 ## Technical preview
 
@@ -83,7 +83,7 @@ I’m assuming only following possible issues:
 
 And some other possible problems can be related to OH stuff in the solution so, please be so kind and try to check this FAQ https://ola.hallengren.com/frequently-asked-questions.html first before asking me directly.
 
-## Versions:
+## Versions
 * v1.1 - first sharable tested solution major bugs fixed
 
 ## Reporting issues
