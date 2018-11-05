@@ -9,9 +9,10 @@ It is creating following stuff in SQL Server instance:
 
 Author: Tomas Rybnicky 
 Date of last update: 
-	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+	v1.1 - 05.11.2018 - fixed linked servers RPC attribute in stored procedure RestoreDatabae
 
 List of previous revisions:
+	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
 	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 */
 USE [master]
@@ -754,6 +755,22 @@ BEGIN
 				RAISERROR(@Msg, 0, 1) WITH NOWAIT;
 
 				EXEC master.dbo.sp_addlinkedserver @server = @CurrentReplicaName, @srvproduct=N'SQL Server'
+
+				SET @Msg = ' - enabling RPC for linked server ' + @CurrentReplicaName
+					RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+
+				EXEC master.dbo.sp_serveroption @server = @CurrentReplicaName, @optname=N'rpc', @optvalue=N'true'
+			END
+			ELSE
+			BEGIN
+				-- ensure that RPC is enabled for linked server							
+				IF NOT EXISTS ( SELECT TOP (1) * FROM master.sys.sysservers WHERE srvname = @CurrentReplicaName AND srvid <> 0 and rpc = 1) 
+				BEGIN
+					SET @Msg = ' - enabling RPC for linked server ' + @CurrentReplicaName
+					RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+
+					EXEC master.dbo.sp_serveroption @server = @CurrentReplicaName, @optname=N'rpc', @optvalue=N'true'
+				END
 			END
 
 			SET @Msg = ' - add on secondary replica ' + @CurrentReplicaName
