@@ -759,17 +759,17 @@ BEGIN
 				SET @Msg = ' - enabling RPC for linked server ' + @CurrentReplicaName
 					RAISERROR(@Msg, 0, 1) WITH NOWAIT;
 
-				EXEC master.dbo.sp_serveroption @server = @CurrentReplicaName, @optname=N'rpc', @optvalue=N'true'
+				EXEC master.dbo.sp_serveroption @server = @CurrentReplicaName, @optname=N'rpc out', @optvalue=N'true'
 			END
 			ELSE
 			BEGIN
 				-- ensure that RPC is enabled for linked server							
-				IF NOT EXISTS ( SELECT TOP (1) * FROM master.sys.sysservers WHERE srvname = @CurrentReplicaName AND srvid <> 0 and rpc = 1) 
+				IF NOT EXISTS ( SELECT TOP (1) * FROM master.sys.sysservers WHERE srvname = @CurrentReplicaName AND srvid <> 0 and rpcout = 1) 
 				BEGIN
-					SET @Msg = ' - enabling RPC for linked server ' + @CurrentReplicaName
+					SET @Msg = ' - enabling RPC Out for linked server ' + @CurrentReplicaName
 					RAISERROR(@Msg, 0, 1) WITH NOWAIT;
 
-					EXEC master.dbo.sp_serveroption @server = @CurrentReplicaName, @optname=N'rpc', @optvalue=N'true'
+					EXEC master.dbo.sp_serveroption @server = @CurrentReplicaName, @optname=N'rpc out', @optvalue=N'true'
 				END
 			END
 
