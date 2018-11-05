@@ -1,6 +1,13 @@
 # SQL Server Database Restore
 Standardized database restore, doing some of pre-restore checks and post-restore configurations with restored databse. Doing also refresh of Availability Group databases, means restores into databases that are part of Availability Group and joining them back. More detailed info within [documentation file](docs/SQL%20Server%20Database%20Restore%20-%20documentation.pdf).
 
+Table of content
+  * [Technical preview](#technical-preview)
+  * [Deployment](#deployment)
+  * [Execution of stored procedures](#execution-of-stored-procedures)
+  * [Possible problems](#possible-problems)
+  * [Versions:](#versions-)
+
 ## Technical preview
 
 Whole solution consist of two stored procedures, that can be called directly or from SQL Agent job steps. One procedure is needed for all restore scenarios, and another only needed on Availability Group (only AG in further writting) secondary replicas to be able to join database to AG. 
