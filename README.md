@@ -38,7 +38,7 @@ For detailed description of what is each procedure doing behind the scenes look 
 ```
 EXEC [master].[dbo].[RestoreDatabase]
 @BackupFile = N'\\Path\To\BackupFile\Backup.bak',
-@Database	= N'TestDB',
+@Database = N'TestDB',
 @LogToTable = 'Y'
 ```
 
@@ -46,7 +46,7 @@ EXEC [master].[dbo].[RestoreDatabase]
 ```
 EXEC [master].[dbo].[RestoreDatabase]
 @BackupFile = N'\\Path\To\BackupFile\Backup.bak',
-@Database	= N'TestDB',
+@Database = N'TestDB',
 @AvailabilityGroup = N'AvailabilityGroupName',
 @SharedFolder = N'\\Path\To\AGShare',
 @LogToTable = 'Y'
