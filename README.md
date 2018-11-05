@@ -37,18 +37,18 @@ For detailed description of what is each procedure doing behind the scenes look 
 ### Restore of database
 ```
 EXEC [master].[dbo].[RestoreDatabase]
-@BackupFile = N'\\SERVER\Backups\TesDB.bak',
-@Database = N'TestDB_Restored',
+@BackupFile = N'\\Path\To\BackupFile\Backup.bak',
+@Database	= N'TestDB',
 @LogToTable = 'Y'
 ```
 
 ### Restore of database that is joined in Availability Group
 ```
 EXEC [master].[dbo].[RestoreDatabase]
-@BackupFile = N'\\SERVER\Backups\TesDB.bak',
-@Database = N'TestDB_Restored',
-@AvailabilityGroup = N'AVAILABILITYGROUPNAME',
-@SharedFolder = N'\\SERVER\SharedFolder',
+@BackupFile = N'\\Path\To\BackupFile\Backup.bak',
+@Database	= N'TestDB',
+@AvailabilityGroup = N'AvailabilityGroupName',
+@SharedFolder = N'\\Path\To\AGShare',
 @LogToTable = 'Y'
 ```
 
@@ -56,11 +56,11 @@ EXEC [master].[dbo].[RestoreDatabase]
 Folowing command is constructed automatically within RestoreDatabase execution but you can  call procedure directly if you want:
 ```
 EXEC [master].[dbo].[AddDatabaseOnSecondary]
-@FullBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_AG_init.bak',
-@TlogBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_20181031164726',
-@Database = N'healthcheck',
-@AvailabilityGroup = N'SQLCLO2PRODAG',
-@LogToTable = 'Y'
+@FullBackupFile = N'\\Path\To\BackupFile\FullBackup.bak',
+@TlogBackupFile = N'\\Path\To\BackupFile\TlogBackup.trn',
+@Database = N'TestDB',
+@AvailabilityGroup = N'AvailabilityGroupName',
+@LogToTable = 'Y'		
 ```
 
 ### Messages
@@ -83,7 +83,6 @@ And some other possible problems can be related to OH stuff in the solution so, 
 
 Please report all found issues, current version of the solution is the first one and require some debugging to be “perfect”. Here are some contacts you can write to via email or LYNC:
 
-*	tomas.rybnicky@wetory.eu
 *	Use GitHub issues channel
 
 
