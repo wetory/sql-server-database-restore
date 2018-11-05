@@ -20,12 +20,11 @@ Last modified: 31.10.2018
 	
 Execution example:					
 	EXEC [master].[dbo].[AddDatabaseOnSecondary]
-	@FullBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_AG_init.bak',
-	@TlogBackupFile = N'\\SQLCLO2PROD01\AGShare\healthcheck_20181031164726',
-	@Database = N'healthcheck',
-	@AvailabilityGroup = N'SQLCLO2PRODAG',
-	@LogToTable = 'Y'
-					
+	@FullBackupFile = N'\\Path\To\BackupFile\FullBackup.bak',
+	@TlogBackupFile = N'\\Path\To\BackupFile\TlogBackup.trn',
+	@Database = N'TestDB',
+	@AvailabilityGroup = N'AvailabilityGroupName',
+	@LogToTable = 'Y'					
 */
 @FullBackupFile		NVARCHAR(1024),			-- Database backup file taken on primary replica
 @TlogBackupFile		NVARCHAR(1024),			-- Transaction log backup file taken on primary replica
