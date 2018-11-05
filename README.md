@@ -71,7 +71,7 @@ Stored procedures are informing you via messages about its execution steps in pr
 There was testing of the solution ongoing for several weeks for debugging and tuning purposes and all known problems has been fixed already, but as everything also this script can cause some issues in different environments. 
 
 I’m assuming only following possible issues:
-* problems with accessing secondary replica via linked server - Login failed for User ‘NT AUTHORITY\ANONYMOUS LOGON’ – ERRORLOG
+* problems with accessing secondary replica via linked server - [Login failed for User ‘NT AUTHORITY\ANONYMOUS LOGON’](https://blog.sqlauthority.com/2015/06/13/sql-server-login-failed-for-user-nt-authorityanonymous-logon/)
 *	When executing from SQL Agent job, ensure that account that is used for execution has sufficient permissions, especially in case restoring database into Avaialability Group as there are actions done on all secondary replicas.
 
 And some other possible problems can be related to OH stuff in the solution so, please be so kind and try to check this FAQ https://ola.hallengren.com/frequently-asked-questions.html first before asking me directly.
