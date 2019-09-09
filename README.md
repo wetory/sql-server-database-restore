@@ -41,11 +41,12 @@ OK so you are all set now and you can start enjoying new stored procedures. You 
 
 For detailed description of what is each procedure doing behind the scenes look into [documentation file](docs/SQL%20Server%20Database%20Restore%20-%20documentation.pdf) or go through messages after its execution. 
 
-### Restore of database
+### Restore of database and set up autogrowth based on model database (@CheckModel since v1.2)
 ```
 EXEC [master].[dbo].[RestoreDatabase]
 @BackupFile = N'\\Path\To\BackupFile\Backup.bak',
 @Database = N'TestDB',
+@CheckModel = 'Y', 
 @LogToTable = 'Y'
 ```
 
@@ -85,6 +86,7 @@ And some other possible problems can be related to OH stuff in the solution so, 
 
 ## Versions
 * v1.1 - first sharable tested solution major bugs fixed
+* v1.2 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
 
 ## Reporting issues
 
