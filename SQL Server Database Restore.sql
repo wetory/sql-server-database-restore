@@ -9,7 +9,7 @@ It is creating following stuff in SQL Server instance:
 
 Author: Tomas Rybnicky 
 Date of last update: 
-	v1.1 - 05.11.2018 - fixed linked servers RPC attribute in stored procedure RestoreDatabae
+	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
 
 List of previous revisions:
 	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
@@ -329,15 +329,20 @@ care of all actions needed for proper restore proccess of database in Availabili
 to CommandLog which is able from popular Olla Hallengreen's maintenance.
 	
 Author:	Tomas Rybnicky
-Version: 0.1
-Last modified: 30.10.2018
+Date of last update: 
+	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+
+List of previous revisions:
+	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 	
 Execution example:
-	-- restore database
+	-- restore database and set up autogrowth based on model database
 	EXEC [master].[dbo].[RestoreDatabase]
 	@BackupFile = N'\\Path\To\BackupFile\Backup.bak',
 	@Database	= N'TestDB',
-	@LogToTable = 'Y'
+	@LogToTable = 'Y',
+	@CheckModel = 'Y'
 
 	-- restore database and add to Availability Group
 	EXEC [master].[dbo].[RestoreDatabase]
@@ -350,9 +355,10 @@ Execution example:
 
 @BackupFile			NVARCHAR(1024),			-- Backup file that is to be used for restore
 @Database			SYSNAME,				-- Name of restored database
+@CheckModel			CHAR(1)			= 'N',	-- Flag if restored database has to attach model database properties (autogrowth for files)
 @AvailabilityGroup	SYSNAME			= NULL,	-- Name of Availability Group that is to be used for database. When NULL then normal restore operation happening
 @SharedFolder		NVARCHAR(2048)	= NULL,	-- Path to shared network location acessible by all replicas. Required when adding to Availability group
-@LogToTable			CHAR(1) = 'N'			-- Flag if restore commands are to be tracked in CommandLog table
+@LogToTable			CHAR(1)			= 'N'	-- Flag if restore commands are to be tracked in CommandLog table
 
 AS
 
@@ -494,6 +500,7 @@ BEGIN
 
 	SET @Msg = CHAR(13) + CHAR(10) + 'STEP (' + @@SERVERNAME + '): Preparing'
 	RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+
 	----------------------------------------------------------------------------------------
 	-- get instance configuration info
 	----------------------------------------------------------------------------------------
@@ -564,6 +571,7 @@ BEGIN
 			WHEN [Type] = 'L' THEN ', MOVE ''' + LogicalName + ''' TO ''' + @InstanceTlogPath
 		END + '\\' + @Database + RIGHT(PhysicalName,4) + ''''
 	FROM #FileListTable
+
 	----------------------------------------------------------------------------------------
 	-- take database offline and drop it if exist
 	----------------------------------------------------------------------------------------
@@ -588,6 +596,47 @@ BEGIN
 
 	SET @Msg = 'STEP (' + @@SERVERNAME + '): Post configuration'
 	RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+
+	----------------------------------------------------------------------------------------
+	-- set files autogrowth based on model database if given by parameter
+	----------------------------------------------------------------------------------------
+	IF @CheckModel = 'Y'
+	BEGIN 
+		SET @Msg = ' - set autogrowth values based on model database'
+		RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+
+		DECLARE @DataFileGrowth INT
+		DECLARE @LogFileGrowth INT
+		DECLARE @DataFileIsPercentGrowth INT
+		DECLARE @LogFileIsPercentGrowth INT
+
+		-- gather model database properties
+		SELECT 
+			@DataFileGrowth = growth,
+			@DataFileIsPercentGrowth = is_percent_growth
+		FROM master.sys.master_files mf
+		INNER JOIN master.sys.databases db ON mf.database_id = db.database_id
+		WHERE db.name = 'model' AND mf.type = 0
+
+		SELECT 
+			@LogFileGrowth = growth,
+			@LogFileIsPercentGrowth = is_percent_growth
+		FROM master.sys.master_files mf
+		INNER JOIN master.sys.databases db ON mf.database_id = db.database_id
+		WHERE db.name = 'model' AND mf.type = 1
+
+		SET @Tsql = ''
+		SELECT @Tsql = @Tsql +
+			CASE
+				WHEN FileType = 0 AND @DataFileIsPercentGrowth = 0 THEN 'ALTER DATABASE [' + @Database + '] MODIFY FILE ( NAME = N''' + FileName + ''', FILEGROWTH = ' + CAST(@DataFileGrowth * 8 AS VARCHAR) + 'KB );'
+				WHEN FileType = 0 AND @DataFileIsPercentGrowth = 1 THEN 'ALTER DATABASE [' + @Database + '] MODIFY FILE ( NAME = N''' + FileName + ''', FILEGROWTH = ' + CAST(@DataFileGrowth AS VARCHAR) + '% );'
+				WHEN FileType = 1 AND @LogFileIsPercentGrowth  = 0 THEN 'ALTER DATABASE [' + @Database + '] MODIFY FILE ( NAME = N''' + FileName + ''', FILEGROWTH = ' + CAST(@LogFileGrowth * 8 AS VARCHAR) + 'KB );'
+				WHEN FileType = 1 AND @LogFileIsPercentGrowth  = 1 THEN 'ALTER DATABASE [' + @Database + '] MODIFY FILE ( NAME = N''' + FileName + ''', FILEGROWTH = ' +CAST( @LogFileGrowth AS VARCHAR) + '% );'
+			END
+		FROM #LogicalFilesTable
+		EXECUTE(@Tsql)
+	END
+
 	----------------------------------------------------------------------------------------
 	-- shrink log files
 	----------------------------------------------------------------------------------------
@@ -827,6 +876,7 @@ BEGIN
 	HadrNotEnabled:
 		SET @ErrorMessage = 'HADR not enabled on instance ' + @@SERVERNAME + ', use normal restore instead of restore to AG. Exitting...'
 		GOTO QuitWithRollback
+
 	----------------------------------------------------------------------------------------
 	-- skip restore because wrong Availabilit Group name given
 	----------------------------------------------------------------------------------------
@@ -880,7 +930,7 @@ BEGIN
 		IF OBJECT_ID('tempdb..#SecondaryReplicas') IS NOT NULL DROP TABLE #SecondaryReplicas	
 END
 GO
-PRINT 'STEP : Created stored procedure [dbo].[AddDatabaseOnSecondary] in master database.'
+PRINT 'STEP : Created stored procedure [dbo].[RestoreDatabase] in master database.'
 GO
 IF OBJECT_ID('[dbo].[AddDatabaseOnSecondary]') IS NOT NULL DROP PROCEDURE [dbo].[AddDatabaseOnSecondary]
 GO
@@ -893,8 +943,12 @@ replica and adding given database to availability groupin folowwing steps:
  - join database to availability group on secondary
 
 Author:	Tomas Rybnicky
-Version: 0.1
-Last modified: 31.10.2018
+Date of last update: 
+	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+
+List of previous revisions:
+	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 	
 Execution example:					
 	EXEC [master].[dbo].[AddDatabaseOnSecondary]
@@ -1087,7 +1141,7 @@ BEGIN
 	EndOfFile:
 END
 GO
-PRINT 'STEP : Created stored procedure [dbo].[RestoreDatabase] in master database.'
+PRINT 'STEP : Created stored procedure [dbo].[AddDatabaseOnSecondary] in master database.'
 GO
 PRINT '-------------------------------------------------------------------------'
 PRINT 'SQL Server Database Restore - deployed to ' + @@SERVERNAME 

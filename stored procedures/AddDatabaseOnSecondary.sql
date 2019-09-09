@@ -7,6 +7,7 @@ GO
 IF OBJECT_ID('[dbo].[AddDatabaseOnSecondary]') IS NOT NULL DROP PROCEDURE [dbo].[AddDatabaseOnSecondary]
 GO
 CREATE PROCEDURE [dbo].[AddDatabaseOnSecondary]
+
 /* 
 Purpose: This procedure can be used for regular restores of database that is part of availability group. this procedure is called on secondary
 replica and adding given database to availability groupin folowwing steps:
@@ -15,8 +16,12 @@ replica and adding given database to availability groupin folowwing steps:
  - join database to availability group on secondary
 
 Author:	Tomas Rybnicky
-Version: 0.1
-Last modified: 31.10.2018
+Date of last update: 
+	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+
+List of previous revisions:
+	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 	
 Execution example:					
 	EXEC [master].[dbo].[AddDatabaseOnSecondary]
@@ -24,7 +29,7 @@ Execution example:
 	@TlogBackupFile = N'\\Path\To\BackupFile\TlogBackup.trn',
 	@Database = N'TestDB',
 	@AvailabilityGroup = N'AvailabilityGroupName',
-	@LogToTable = 'Y'					
+	@LogToTable = 'Y'						
 */
 @FullBackupFile		NVARCHAR(1024),			-- Database backup file taken on primary replica
 @TlogBackupFile		NVARCHAR(1024),			-- Transaction log backup file taken on primary replica
