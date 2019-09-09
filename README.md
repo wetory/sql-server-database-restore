@@ -49,7 +49,7 @@ EXEC [master].[dbo].[RestoreDatabase]
 @CheckModel = 'Y', 
 @LogToTable = 'Y'
 ```
-*@CheckModel parameter avaialble since v1.2
+*@CheckModel parameter available since v1.2
 
 ### Restore of database that is joined in Availability Group
 ```
