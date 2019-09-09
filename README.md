@@ -41,7 +41,7 @@ OK so you are all set now and you can start enjoying new stored procedures. You 
 
 For detailed description of what is each procedure doing behind the scenes look into [documentation file](docs/SQL%20Server%20Database%20Restore%20-%20documentation.pdf) or go through messages after its execution. 
 
-### Restore of database and set up autogrowth based on model database (@CheckModel since v1.2)
+### Restore of database and set up autogrowth based on model database*
 ```
 EXEC [master].[dbo].[RestoreDatabase]
 @BackupFile = N'\\Path\To\BackupFile\Backup.bak',
@@ -49,6 +49,7 @@ EXEC [master].[dbo].[RestoreDatabase]
 @CheckModel = 'Y', 
 @LogToTable = 'Y'
 ```
+*@CheckModel parameter avaialble since v1.2
 
 ### Restore of database that is joined in Availability Group
 ```
