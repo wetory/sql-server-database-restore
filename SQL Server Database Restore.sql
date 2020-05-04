@@ -9,9 +9,10 @@ It is creating following stuff in SQL Server instance:
 
 Author: Tomas Rybnicky 
 Date of last update: 
-	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+	v1.2.1 - 04.05.2020 - SnapshotUrl in RESTORE FILELISTONLY condition changed to SQL Server version < 13
 
 List of previous revisions:
+	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
 	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
 	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 */
@@ -509,7 +510,7 @@ BEGIN
 
 	SET @Version = CAST(LEFT(CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(max)),CHARINDEX('.',CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(max))) - 1) + '.' + REPLACE(RIGHT(CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(max)), LEN(CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(max))) - CHARINDEX('.',CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(max)))),'.','') AS numeric(18,10))
 	IF @Version < 10 AND OBJECT_ID('tempdb..#FileListTable') IS NOT NULL ALTER TABLE #FileListTable DROP COLUMN [TDEThumbprint]; 
-	IF @Version < 14 AND OBJECT_ID('tempdb..#FileListTable') IS NOT NULL ALTER TABLE #FileListTable DROP COLUMN [SnapshotUrl]; 
+	IF @Version < 13 AND OBJECT_ID('tempdb..#FileListTable') IS NOT NULL ALTER TABLE #FileListTable DROP COLUMN [SnapshotUrl]; 
 
 	SET @InstanceDataPath = CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS VARCHAR(1024))
 	SET @InstanceTlogPath = CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS VARCHAR(1024))
