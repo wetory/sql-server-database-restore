@@ -8,13 +8,14 @@ It is creating following stuff in SQL Server instance:
 	- stored procedures in master database
 
 Author: Tomas Rybnicky 
-Date of last update: 
-	v1.2.1 - 04.05.2020 - SnapshotUrl in RESTORE FILELISTONLY condition changed to SQL Server version < 13
+Date of last update:  
+	v1.3.0	- 20.08.2020 - added possiblity to preserve original database permissions settings inlcuding custom roles and users with all securables (RestoreDatabase stored procedure)
 
 List of previous revisions:
-	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
-	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
-	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
+	v1.2.1 	- 04.05.2020 - SnapshotUrl in RESTORE FILELISTONLY condition changed to SQL Server version < 13
+	v1.2 	- 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+	v1.0 	- 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+	v0.1 	- 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 */
 USE [master]
 GO
@@ -331,11 +332,13 @@ to CommandLog which is able from popular Olla Hallengreen's maintenance.
 	
 Author:	Tomas Rybnicky
 Date of last update: 
-	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+	v1.3.0	- 20.08.2020 - added possiblity to preserve original database permissions settings inlcuding custom roles and users with all securables (RestoreDatabase stored procedure)
 
 List of previous revisions:
-	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
-	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
+	v1.2.1	- 04.05.2020 - SnapshotUrl in RESTORE FILELISTONLY condition changed to SQL Server version < 13
+	v1.2	- 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+	v1.0	- 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+	v0.1	- 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 	
 Execution example:
 	-- restore database and set up autogrowth based on model database
@@ -344,6 +347,13 @@ Execution example:
 	@Database	= N'TestDB',
 	@LogToTable = 'Y',
 	@CheckModel = 'Y'
+
+	-- restore database preserving database permissions
+	EXEC [master].[dbo].[RestoreDatabase]
+	@BackupFile = N'\\Path\To\BackupFile\Backup.bak',
+	@Database	= N'TestDB',
+	@LogToTable = 'Y',
+	@PreservePermissions = 'Y'
 
 	-- restore database and add to Availability Group
 	EXEC [master].[dbo].[RestoreDatabase]
@@ -354,12 +364,13 @@ Execution example:
 	@LogToTable = 'Y'
 */
 
-@BackupFile			NVARCHAR(1024),			-- Backup file that is to be used for restore
-@Database			SYSNAME,				-- Name of restored database
-@CheckModel			CHAR(1)			= 'N',	-- Flag if restored database has to attach model database properties (autogrowth for files)
-@AvailabilityGroup	SYSNAME			= NULL,	-- Name of Availability Group that is to be used for database. When NULL then normal restore operation happening
-@SharedFolder		NVARCHAR(2048)	= NULL,	-- Path to shared network location acessible by all replicas. Required when adding to Availability group
-@LogToTable			CHAR(1)			= 'N'	-- Flag if restore commands are to be tracked in CommandLog table
+@BackupFile				NVARCHAR(1024),			-- Backup file that is to be used for restore
+@Database				SYSNAME,				-- Name of restored database
+@CheckModel				CHAR(1)			= 'N',	-- Flag if restored database has to attach model database properties (autogrowth for files)
+@AvailabilityGroup		SYSNAME			= NULL,	-- Name of Availability Group that is to be used for database. When NULL then normal restore operation happening
+@SharedFolder			NVARCHAR(2048)	= NULL,	-- Path to shared network location acessible by all replicas. Required when adding to Availability group
+@PreservePermissions	CHAR(1)			= 'N',	-- Flag if current database users and roles has to be preserved after restore (user mapping, owned schemas, database roles, securables, extended properties). Since v1.3
+@LogToTable				CHAR(1)			= 'N'	-- Flag if restore commands are to be tracked in CommandLog table
 
 AS
 
@@ -395,7 +406,7 @@ BEGIN
 	----------------------------------------------------------------------------------------
 	-- check requirements
 	----------------------------------------------------------------------------------------	
-		SET @Msg = ' - permissions'
+	SET @Msg = ' - permissions'
 	RAISERROR(@Msg, 0, 1) WITH NOWAIT;
 	IF IS_SRVROLEMEMBER('sysadmin') = 0
 	BEGIN
@@ -419,6 +430,13 @@ BEGIN
 		GOTO QuitWithRollback
 	END
 	
+	SET @Msg = ' - parameters'
+	RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+	IF @PreservePermissions = 'Y' AND NOT EXISTS (SELECT 1 FROM sys.databases WHERE [name] = @Database)
+	BEGIN
+		SET @ErrorMessage = 'Parameter @PreservePermissions can not be used when database soes not exist yet! Please check if database ' + @Database + ' exists and rerun procedure.'
+		GOTO QuitWithRollback
+	END
 
 	----------------------------------------------------------------------------------------
 	-- create tables used in script
@@ -456,6 +474,68 @@ BEGIN
 		FileId INT,
 		FileSize INT
 	)
+
+	-- START Since v1.3
+	IF @PreservePermissions = 'Y'
+	BEGIN
+		IF OBJECT_ID('tempdb..#DatabaseRoleCreateOrder') IS NOT NULL DROP TABLE #DatabaseRoleCreateOrder
+		CREATE TABLE #DatabaseRoleCreateOrder (
+			[RoleId]		INT,
+			[RoleName]		SYSNAME,
+			[CreateOrder]	INT
+		)
+
+		IF OBJECT_ID('tempdb..#DatabasePrincipals') IS NOT NULL DROP TABLE #DatabasePrincipals
+		CREATE TABLE #DatabasePrincipals (
+			[PrincipalId]	INT,
+			[PrincipalSid]	VARBINARY(85),
+			[PrincipalName]	SYSNAME,
+			[PrincipalType]	CHAR(1),
+			[DefaultSchema]	SYSNAME NULL,
+			[LoginName]     SYSNAME NULL,
+			[LoginType]     CHAR(1) NULL,
+			[OwnerId]		INT NULL,
+			[OwnerName]		SYSNAME NULL,
+			[CreateOrder]	SMALLINT,
+			[Processed]		BIT DEFAULT 0
+		)
+
+		IF OBJECT_ID('tempdb..#DatabaseOwnedSchemas') IS NOT NULL DROP TABLE #DatabaseOwnedSchemas
+		CREATE TABLE #DatabaseOwnedSchemas (
+			[PrincipalId]	INT,
+			[PrincipalName]	SYSNAME,
+			[SchemaId]		INT,
+			[SchemaName]    SYSNAME
+		)
+
+		IF OBJECT_ID('tempdb..#DatabaseRoleMembers') IS NOT NULL DROP TABLE #DatabaseRoleMembers
+		CREATE TABLE #DatabaseRoleMembers (
+			[PrincipalId]	INT,
+			[PrincipalName]	SYSNAME,
+			[RoleId]		INT,
+			[RoleName]		SYSNAME
+		)
+
+		IF OBJECT_ID('tempdb..#DatabaseExplicitPermissions') IS NOT NULL DROP TABLE #DatabaseExplicitPermissions
+		CREATE TABLE #DatabaseExplicitPermissions (
+			[PrincipalId]	INT,
+			[CommandState]	NVARCHAR(60),
+			[Permission]    NVARCHAR(128),
+			[Securable]		NVARCHAR(258),
+			[Grantee]		NVARCHAR(258),
+			[GrantOption]	NVARCHAR(60),
+			[Grantor]		NVARCHAR(258)
+		)
+
+		IF OBJECT_ID('tempdb..#DatabaseExtendedProperties') IS NOT NULL DROP TABLE #DatabaseExtendedProperties
+		CREATE TABLE #DatabaseExtendedProperties (
+			[PrincipalId]	INT,
+			[PrincipalName]	SYSNAME,
+			[PropertyName]	SYSNAME,
+			[PropertyValue]	SQL_VARIANT
+		)
+	END
+	-- END Since v1.3
 
 	----------------------------------------------------------------------------------------
 	-- check availability group
@@ -534,6 +614,239 @@ BEGIN
 		SET @ErrorMessage = ERROR_MESSAGE() + ' Please check if file ' + @BackupFile + ' exists and if not used by another proccess.'
 		GOTO QuitWithRollback
 	END CATCH	
+
+	-- START Since v1.3
+	----------------------------------------------------------------------------------------
+	-- get database users info
+	----------------------------------------------------------------------------------------
+	IF @PreservePermissions = 'Y'
+	BEGIN		
+		SET @Msg = ' - gathering current database users info'
+		RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+
+		-- gatger database roles create order - this important and role membership can be hierarchical
+		IF OBJECT_ID('tempdb..#TmpRoles') IS NOT NULL DROP TABLE #TmpRoles
+		CREATE TABLE #TmpRoles (
+			RoleId INT,
+			RoleName SYSNAME,
+			ParentRoleId INT NULL,
+			ParentRoleName SYSNAME NULL
+		)
+
+		SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';'
+		SET @Tsql = @Tsql + '
+		SELECT 
+			dp.principal_id AS RoleId,
+			dp.name AS RoleName,
+			rm.role_principal_id AS ParentRoleId,
+			dr.name AS ParentRoleName
+		FROM sys.database_principals dp
+			LEFT JOIN sys.database_role_members rm ON dp.principal_id = rm.member_principal_id
+			LEFT JOIN sys.database_principals dr ON dr.principal_id = rm.role_principal_id
+		WHERE dp.type in (''R'')
+			AND dp.is_fixed_role = 0
+			AND dp.principal_id > 4;'
+		INSERT INTO #TmpRoles EXEC(@Tsql);		
+
+		WITH cteRolesHierarchy AS (
+			SELECT
+				RoleId,
+				RoleName,
+				ParentRoleId,
+				ParentRoleName,
+				0 AS CreateOrder
+			FROM #TmpRoles
+			WHERE ParentRoleId IS NULL
+
+			UNION ALL
+	 
+			SELECT
+				r.RoleId,
+				r.RoleName,
+				r.ParentRoleId,
+				r.ParentRoleName,
+				rh.CreateOrder + 1 AS CreateOrder
+			FROM #TmpRoles r
+				INNER JOIN cteRolesHierarchy rh ON r.ParentRoleId = rh.RoleId
+
+		)
+		
+		INSERT INTO #DatabaseRoleCreateOrder
+		SELECT DISTINCT 
+			RoleId, 
+			RoleName, 
+			CreateOrder 
+		FROM cteRolesHierarchy 
+		ORDER BY CreateOrder ASC
+
+		IF OBJECT_ID('tempdb..#TmpRoles') IS NOT NULL DROP TABLE #TmpRoles
+
+		-- gather database principals
+		SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';'
+		SET @Tsql = @Tsql + 
+		'SELECT 
+			dp.principal_id AS PrincipalId,
+			dp.sid AS PrincipalSid,
+			dp.name AS PrincipalName,
+			dp.type AS PrincipalType,
+			dp.default_schema_name AS DefaultSchema,
+			sp.name AS LoginName,
+			sp.type AS LoginType,
+			dp.owning_principal_id AS OwnerId,
+			dpo.name AS OwnerName,
+			CASE
+				WHEN dp.type = ''A'' THEN 0
+				WHEN dp.type = ''R'' THEN 1
+				ELSE 2
+			END AS CreateOrder,
+			0 AS Processed
+		FROM sys.database_principals AS dp
+			LEFT JOIN sys.server_principals sp ON dp.sid = sp.sid
+			LEFT JOIN sys.database_principals dpo ON dp.owning_principal_id = dpo.principal_id
+		WHERE dp.type in (''S'', ''G'', ''U'', ''E'', ''R'')
+			AND dp.name NOT LIKE ''##%##''
+			AND dp.name NOT LIKE ''NT AUTHORITY%''
+			AND dp.name NOT LIKE ''NT SERVICE%''
+			AND dp.principal_id > 4
+			AND dp.is_fixed_role = 0'
+		INSERT INTO #DatabasePrincipals EXEC(@Tsql)		
+
+		-- gather owned schemas
+		SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';'
+		SET @Tsql = @Tsql + 		
+		'SELECT
+			s.principal_id AS PrincipalId,
+			dp.name AS PrincipalName,
+			s.schema_id AS SchemaId,
+			s.name AS SchemaName
+		FROM sys.schemas AS s 
+			INNER JOIN sys.database_principals AS dp ON s.principal_id = dp.principal_id
+		WHERE dp.type in (''S'', ''G'', ''U'', ''E'', ''R'')
+			AND dp.name NOT LIKE ''##%##''
+			AND dp.name NOT LIKE ''NT AUTHORITY%''
+			AND dp.name NOT LIKE ''NT SERVICE%''
+			AND dp.principal_id > 4
+			AND dp.is_fixed_role = 0'
+		INSERT INTO #DatabaseOwnedSchemas EXEC(@Tsql)
+
+		-- gather roles membership
+		SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';'
+		SET @Tsql = @Tsql + 
+		'SELECT
+			dp.principal_id AS PrincipalId,
+			dp.name AS PrincipalNamePrincipal,
+			role.principal_id AS RoleId,
+			role.name AS RoleName
+		FROM sys.database_role_members AS drm
+			INNER JOIN sys.database_principals AS dp ON drm.member_principal_id = dp.principal_id
+			INNER JOIN sys.database_principals AS role ON role.principal_id = drm.role_principal_id
+		WHERE dp.type in (''S'', ''G'', ''U'', ''E'', ''R'')
+			AND dp.name NOT LIKE ''##%##''
+			AND dp.name NOT LIKE ''NT AUTHORITY%''
+			AND dp.name NOT LIKE ''NT SERVICE%''
+			AND dp.principal_id > 4
+			AND dp.is_fixed_role = 0'
+		INSERT INTO #DatabaseRoleMembers EXEC(@Tsql)
+
+		-- gather explicit permissions on securables
+		SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';'
+		SET @Tsql = @Tsql + 
+		'SELECT 
+			dp.principal_id AS PrincipalId,
+			CASE 
+				WHEN p.state_desc = ''GRANT_WITH_GRANT_OPTION'' THEN ''GRANT'' 
+				ELSE p.state_desc 
+			END AS CommandState,
+			p.permission_name AS Permission,
+			CASE p.class_desc
+				WHEN ''DATABASE'' THEN ''DATABASE::'' + QUOTENAME(DB_NAME())
+				WHEN ''SCHEMA'' THEN ''SCHEMA::'' + QUOTENAME(s.name)
+				WHEN ''OBJECT_OR_COLUMN'' THEN ''OBJECT::'' + QUOTENAME(os.name) + ''.'' + QUOTENAME(o.name) +
+					CASE 
+						WHEN p.minor_id <> 0 THEN ''('' + QUOTENAME(c.name) + '')'' 
+						ELSE '''' 
+					END
+				WHEN ''DATABASE_PRINCIPAL'' THEN 
+					CASE pr.type_desc 
+						WHEN ''SQL_USER'' THEN ''USER''
+						WHEN ''DATABASE_ROLE'' THEN ''ROLE''
+						WHEN ''APPLICATION_ROLE'' THEN ''APPLICATION ROLE''
+					END + ''::'' + QUOTENAME(pr.name)
+				WHEN ''ASSEMBLY'' THEN ''ASSEMBLY::'' + QUOTENAME(a.name)
+				WHEN ''TYPE'' THEN ''TYPE::'' + QUOTENAME(ts.name) + ''.'' + QUOTENAME(t.name)
+				WHEN ''XML_SCHEMA_COLLECTION'' THEN ''XML SCHEMA COLLECTION::'' + QUOTENAME(xss.name) + ''.'' + QUOTENAME(xsc.name)
+				WHEN ''SERVICE_CONTRACT'' THEN ''CONTRACT::'' + QUOTENAME(sc.name)
+				WHEN ''MESSAGE_TYPE'' THEN ''MESSAGE TYPE::'' + QUOTENAME(smt.name)
+				WHEN ''REMOTE_SERVICE_BINDING'' THEN ''REMOTE SERVICE BINDING::'' + QUOTENAME(rsb.name)
+				WHEN ''ROUTE'' THEN ''ROUTE::'' + QUOTENAME(r.name)
+				WHEN ''SERVICE'' THEN ''SERVICE::'' + QUOTENAME(sbs.name)
+				WHEN ''FULLTEXT_CATALOG'' THEN ''FULLTEXT CATALOG::'' + QUOTENAME(fc.name)
+				WHEN ''FULLTEXT_STOPLIST'' THEN ''FULLTEXT STOPLIST::'' + QUOTENAME(fs.name)
+				WHEN ''SYMMETRIC_KEYS'' THEN ''SYMMETRIC KEY::'' + QUOTENAME(sk.name)
+				WHEN ''CERTIFICATE'' THEN ''CERTIFICATE::'' + QUOTENAME(cer.name)
+				WHEN ''ASYMMETRIC_KEY'' THEN ''ASYMMETRIC KEY::'' + QUOTENAME(ak.name)
+			END COLLATE Latin1_General_100_BIN AS Securable,
+			dp.name AS Grantee,
+			CASE 
+				WHEN p.state_desc = ''GRANT_WITH_GRANT_OPTION'' THEN ''WITH GRANT OPTION'' 
+				ELSE '''' 
+			END AS GrantOption,
+			g.name AS Grantor
+		FROM sys.database_permissions AS p
+			LEFT JOIN sys.schemas AS s ON p.major_id = s.schema_id
+			LEFT JOIN sys.all_objects AS o 
+				INNER JOIN sys.schemas AS os ON o.schema_id = os.schema_id 
+					ON p.major_id = o.object_id
+			LEFT JOIN sys.types AS t 
+				INNER JOIN sys.schemas AS ts ON t.schema_id = ts.schema_id 
+					ON p.major_id = t.user_type_id
+			LEFT JOIN sys.xml_schema_collections AS xsc     
+				INNER JOIN sys.schemas AS xss ON xsc.schema_id = xss.schema_id
+					ON p.major_id = xsc.xml_collection_id
+			LEFT JOIN sys.columns AS c ON o.object_id = c.object_id AND p.minor_id = c.column_id
+			LEFT JOIN sys.database_principals AS pr ON p.major_id = pr.principal_id
+			LEFT JOIN sys.assemblies AS A ON p.major_id = a.assembly_id
+			LEFT JOIN sys.service_contracts AS sc ON p.major_id = sc.service_contract_id
+			LEFT JOIN sys.service_message_types AS smt ON p.major_id = smt.message_type_id
+			LEFT JOIN sys.remote_service_bindings AS rsb ON p.major_id = rsb.remote_service_binding_id
+			LEFT JOIN sys.services AS sbs ON p.major_id = sbs.service_id
+			LEFT JOIN sys.routes AS r ON p.major_id = r.route_id
+			LEFT JOIN sys.fulltext_catalogs AS fc ON p.major_id = fc.fulltext_catalog_id
+			LEFT JOIN sys.fulltext_stoplists AS fs ON p.major_id = fs.stoplist_id
+			LEFT JOIN sys.asymmetric_keys AS ak ON p.major_id = ak.asymmetric_key_id
+			LEFT JOIN sys.certificates AS cer ON p.major_id = cer.certificate_id
+			LEFT JOIN sys.symmetric_keys AS sk ON p.major_id = sk.symmetric_key_id
+			INNER JOIN sys.database_principals AS dp ON p.grantee_principal_id = dp.principal_id
+			INNER JOIN sys.database_principals AS g ON p.grantor_principal_id = g.principal_id
+		WHERE dp.type in (''S'', ''G'', ''U'', ''E'', ''R'')
+			AND dp.name NOT LIKE ''##%##''
+			AND dp.name NOT LIKE ''NT AUTHORITY%''
+			AND dp.name NOT LIKE ''NT SERVICE%''
+			AND dp.principal_id > 4
+			AND dp.is_fixed_role = 0
+			AND (p.permission_name <> ''CONNECT'' AND p.class_desc <> ''DATABASE'')'
+		INSERT INTO #DatabaseExplicitPermissions EXEC(@Tsql)
+
+		-- gather extended properties for users
+		SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';'
+		SET @Tsql = @Tsql + 		
+		'SELECT 
+			dp.principal_id AS PrincipalId,
+			dp.name AS PrincipalName,
+			ep.name AS PropertyName,
+			ep.value AS PropertyValue
+		FROM sys.extended_properties AS ep
+			INNER JOIN sys.database_principals AS dp ON ep.major_id = dp.principal_id
+		WHERE dp.type in (''S'', ''G'', ''U'', ''E'', ''R'')
+			AND dp.name NOT LIKE ''##%##''
+			AND dp.name NOT LIKE ''NT AUTHORITY%''
+			AND dp.name NOT LIKE ''NT SERVICE%''
+			AND dp.principal_id > 4
+			AND dp.is_fixed_role = 0
+			AND ep.class = 4'
+		INSERT INTO #DatabaseExtendedProperties EXEC(@Tsql)
+	END
+	-- END Since v1.3
 
 	----------------------------------------------------------------------------------------
 	-- remove database from Availability Group if all requirements are met
@@ -687,6 +1000,198 @@ BEGIN
 	ORDER BY [FileType]
 
 	EXECUTE(@Tsql)
+
+	-- START Since v1.3
+	----------------------------------------------------------------------------------------
+	-- preserve users and roles with permissions from original database
+	----------------------------------------------------------------------------------------
+	IF @PreservePermissions = 'Y'
+	BEGIN
+
+		-- This need to be done to give creation scripts right order (important for hierarchy of roles)
+		UPDATE #DatabasePrincipals
+		SET CreateOrder = dp.CreateOrder - rco.CreateOrder
+		FROM #DatabasePrincipals dp
+			LEFT JOIN #DatabaseRoleCreateOrder rco ON dp.PrincipalId = rco.RoleId
+
+		-- JUST FOR TESTING
+		--SELECT * FROM #DatabaseRoleCreateOrder
+		--SELECT * FROM #DatabasePrincipals
+		--SELECT * FROM #DatabaseOwnedSchemas
+		--SELECT * FROM #DatabaseRoleMembers
+		--SELECT * FROM #DatabaseExplicitPermissions
+		--SELECT * FROM #DatabaseExtendedProperties
+
+		SET @Msg = ' - creating roles and users with permissions'
+		RAISERROR(@Msg, 0, 1) WITH NOWAIT;
+
+		DECLARE @PrincipalId INT
+		DECLARE @PrincipalName SYSNAME
+		DECLARE @PrincipalType CHAR(1)
+		DECLARE @LoginName SYSNAME
+
+		-- Process users one by one
+		WHILE EXISTS(SELECT 1 FROM #DatabasePrincipals WHERE Processed = 0)
+		BEGIN
+			SELECT TOP 1 
+				@PrincipalId = PrincipalId,
+				@PrincipalName = PrincipalName,
+				@PrincipalType = PrincipalType,
+				@LoginName = LoginName
+			FROM #DatabasePrincipals dp
+			WHERE Processed = 0
+			ORDER BY CreateOrder DESC
+
+			-- Check prinsipal type first (role/user)
+			IF @PrincipalType = 'R'
+			BEGIN -- Database role
+
+				-- Temp table for iteration
+				IF OBJECT_ID('tempdb..#IterRoleMembers') IS NOT NULL DROP TABLE #IterRoleMembers
+				CREATE TABLE #IterRoleMembers (
+					[PrincipalName]	SYSNAME,
+					[Processed]		BIT DEFAULT 0
+				)
+				
+				SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';' 
+				SET @Tsql = @Tsql + '
+				SELECT 
+					[name],
+					0 AS Processed
+				FROM sys.database_principals 
+				WHERE principal_id in (
+					SELECT 
+						member_principal_id
+					FROM sys.database_role_members
+					WHERE role_principal_id IN (
+						SELECT 
+							principal_id
+						FROM sys.database_principals 
+						WHERE [name] = N''' + @PrincipalName + ''' 
+							AND type = ''R''
+							AND [name] <> N''public''
+					)
+				)'
+				INSERT INTO #IterRoleMembers EXEC(@Tsql)
+
+				-- Iterate and drop members
+				DECLARE @MemberName SYSNAME
+				WHILE EXISTS(SELECT 1 FROM #IterRoleMembers WHERE Processed = 0)
+				BEGIN
+					SELECT TOP 1 
+						@MemberName = PrincipalName
+					FROM #IterRoleMembers
+					WHERE Processed = 0
+					ORDER BY PrincipalName ASC
+
+					SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';' 
+					SET @Tsql = @Tsql + 'ALTER ROLE '+ QUOTENAME(@PrincipalName) +' DROP MEMBER '+ QUOTENAME(@MemberName)
+					EXEC(@Tsql)
+
+					-- Mark as processed for next iteration
+					UPDATE #IterRoleMembers
+					SET Processed = 1
+					WHERE PrincipalName = @MemberName
+
+					SET @MemberName = NULL
+				END
+
+				-- Cleanup after iteration
+				IF OBJECT_ID('tempdb..#IterateRoleMembers') IS NOT NULL DROP TABLE #IterateRoleMembers
+
+				-- Drop role
+				SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';' 
+				SET @Tsql = @Tsql + 'IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N''' + @PrincipalName + ''' AND type = ''R'') DROP ROLE '+ QUOTENAME(@PrincipalName)
+				EXEC(@Tsql)
+
+				-- Start building T-SQL for role
+				SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';' + CHAR(13) + CHAR(10)
+				SELECT 
+					@Tsql = @Tsql + 'CREATE ROLE ' + QUOTENAME(PrincipalName)
+					+ CASE 
+						WHEN OwnerName IS NOT NULL THEN ' AUTHORIZATION ' + QUOTENAME(OwnerName)
+						ELSE ''
+					END 
+				FROM #DatabasePrincipals
+				WHERE PrincipalId = @PrincipalId
+
+			END -- Database role
+			ELSE
+			BEGIN -- Database user
+				
+				SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';' 
+				SET @Tsql = @Tsql + 'IF DATABASE_PRINCIPAL_ID(''' + @PrincipalName + ''') IS NOT NULL DROP USER ' + QUOTENAME(@PrincipalName) + ';' 
+				EXEC(@Tsql)				
+
+				IF SUSER_ID(@LoginName) IS NOT NULL OR @LoginName IS NULL 
+				BEGIN 
+					
+					-- Start building T-SQL for user
+					SET @Tsql = 'USE ' + QUOTENAME(@Database) + ';' + CHAR(13) + CHAR(10)
+					SELECT 
+						@Tsql = @Tsql + 'CREATE USER ' + QUOTENAME(PrincipalName)
+						+ CASE 
+							WHEN @LoginName IS NOT NULL THEN ' FOR LOGIN ' + QUOTENAME(LoginName)
+							ELSE ' WITHOUT LOGIN'
+						END 
+						+ ' WITH DEFAULT_SCHEMA=' + QUOTENAME(DefaultSchema) + ';' + CHAR(13) + CHAR(10)
+					FROM #DatabasePrincipals
+					WHERE PrincipalId = @PrincipalId
+					
+				END
+			END -- Database user
+			
+			-- Add owned schemas
+			SELECT 
+				@Tsql = @Tsql + 'IF DATABASE_PRINCIPAL_ID(''' + PrincipalName + ''') IS NOT NULL AND SCHEMA_ID(''' + SchemaName + ''') IS NOT NULL ALTER AUTHORIZATION ON SCHEMA::' + QUOTENAME(SchemaName) + ' TO ' + QUOTENAME(PrincipalName) + ';' + CHAR(13) + CHAR(10)
+			FROM #DatabaseOwnedSchemas
+			WHERE PrincipalId = @PrincipalId
+
+			-- Add database roles membership
+			SELECT
+				@Tsql = @Tsql + 'IF DATABASE_PRINCIPAL_ID(''' + PrincipalName + ''') IS NOT NULL AND DATABASE_PRINCIPAL_ID(''' + RoleName + ''') IS NOT NULL ALTER ROLE ' + QUOTENAME(RoleName) + ' ADD MEMBER ' + QUOTENAME(PrincipalName) + ';' + CHAR(13) + CHAR(10)
+			FROM #DatabaseRoleMembers
+			WHERE PrincipalId = @PrincipalId
+
+			-- Add explicit permissions
+			SELECT
+				@Tsql = @Tsql + 'IF DATABASE_PRINCIPAL_ID(''' + Grantee + ''') IS NOT NULL ' + CommandState + ' ' + Permission + ' ON ' + Securable + ' TO ' + QUOTENAME(Grantee) + ' ' + GrantOption + ' AS ' + QUOTENAME(Grantor) + ';' + CHAR(13) + CHAR(10)
+			FROM #DatabaseExplicitPermissions
+			WHERE PrincipalId = @PrincipalId
+
+			-- Add extended properties
+			SELECT 
+				@Tsql = @Tsql + 'IF NOT EXISTS(SELECT 1 FROM sys.extended_properties WHERE class_desc = N''DATABASE_PRINCIPAL'' AND major_id = DATABASE_PRINCIPAL_ID(''' + PrincipalName + ''') AND name = N''' + PropertyName + ''' ) '
+					+ 'EXEC sys.sp_addextendedproperty '
+					+ '@name=N''' + PropertyName + ''', ' 
+					+ '@value=N''' + CAST(PropertyValue AS NVARCHAR(MAX)) + ''', '
+					+ '@level0type=N''USER'', ' + 
+					+ '@level0name=N''' + PrincipalName + '''; '
+					+ CHAR(13) + CHAR(10)
+			FROM #DatabaseExtendedProperties
+			WHERE PrincipalId = @PrincipalId
+
+			-- Execute whole command 
+			EXEC [master].[dbo].[CommandExecute]
+			@Command = @Tsql,
+			@CommandType = 'PRESERVE_PERMISSIONS',
+			@DatabaseName = @Database,
+			@Mode = 2,
+			@LogToTable = @LogToTable,
+			@Execute = 'Y'
+
+			-- Mark as processed for next iteration
+			UPDATE #DatabasePrincipals
+			SET Processed = 1
+			WHERE PrincipalId = @PrincipalId
+
+			SET @PrincipalId = NULL
+			SET @PrincipalName = NULL
+			SET @PrincipalType = NULL
+			SET @LoginName = NULL
+		END
+	END
+	-- END Since v1.3
 
 	----------------------------------------------------------------------------------------
 	-- set database to multi user mode
@@ -926,9 +1431,17 @@ BEGIN
 	-- put any cleanup stuff here as script will always hit this part
 	----------------------------------------------------------------------------------------
 	EndOfFile:
-		IF OBJECT_ID('tempdb..#FileListTable')		IS NOT NULL DROP TABLE #FileListTable
-		IF OBJECT_ID('tempdb..#LogicalFilesTable')	IS NOT NULL DROP TABLE #LogicalFilesTable
+		IF OBJECT_ID('tempdb..#FileListTable') IS NOT NULL DROP TABLE #FileListTable
+		IF OBJECT_ID('tempdb..#LogicalFilesTable') IS NOT NULL DROP TABLE #LogicalFilesTable
 		IF OBJECT_ID('tempdb..#SecondaryReplicas') IS NOT NULL DROP TABLE #SecondaryReplicas	
+		-- START Since v1.3
+		IF OBJECT_ID('tempdb..#DatabaseRoleCreateOrder') IS NOT NULL DROP TABLE #DatabaseRoleCreateOrder
+		IF OBJECT_ID('tempdb..#DatabasePrincipals') IS NOT NULL DROP TABLE #DatabasePrincipals	
+		IF OBJECT_ID('tempdb..#DatabaseOwnedSchemas') IS NOT NULL DROP TABLE #DatabaseOwnedSchemas	
+		IF OBJECT_ID('tempdb..#DatabaseRoleMembers') IS NOT NULL DROP TABLE #DatabaseRoleMembers
+		IF OBJECT_ID('tempdb..#DatabaseExplicitPermissions') IS NOT NULL DROP TABLE #DatabaseExplicitPermissions	
+		IF OBJECT_ID('tempdb..#DatabaseExtendedProperties') IS NOT NULL DROP TABLE #DatabaseExtendedProperties	
+		-- END Since v1.3		
 END
 GO
 PRINT 'STEP : Created stored procedure [dbo].[RestoreDatabase] in master database.'
@@ -943,13 +1456,14 @@ replica and adding given database to availability groupin folowwing steps:
  - restore given backup of transaction log
  - join database to availability group on secondary
 
-Author:	Tomas Rybnicky
 Date of last update: 
-	v1.2 - 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+	v1.3.0	- 20.08.2020 - added possiblity to preserve original database permissions settings inlcuding custom roles and users with all securables (RestoreDatabase stored procedure)
 
 List of previous revisions:
-	v1.0 - 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
-	v0.1 - 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
+	v1.2.1	- 04.05.2020 - SnapshotUrl in RESTORE FILELISTONLY condition changed to SQL Server version < 13
+	v1.2	- 09.09.2019 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+	v1.0	- 01.11.2018 - stored procedures cleaned and tested. Solution is usable now.
+	v0.1	- 31.10.2018 - Initial solution containing all not necesary scripting from testing and development work
 	
 Execution example:					
 	EXEC [master].[dbo].[AddDatabaseOnSecondary]
