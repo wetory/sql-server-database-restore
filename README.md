@@ -1,5 +1,5 @@
 # SQL Server Database Restore
-Standardized database restore, doing some of pre-restore checks and post-restore configurations with restored databse. Doing also refresh of Availability Group databases, means restores into databases that are part of Availability Group and joining them back. More detailed info within [documentation file](docs/SQL%20Server%20Database%20Restore%20-%20documentation.pdf).
+Standardized database restore, doing some of pre-restore checks and post-restore configurations with restored databse. Doing also refresh of Availability Group databases, means restores into databases that are part of Availability Group and joining them back. Since v1.3 there is also possiblity to preserve permissions settings, which means that custom database roles and users are kept from original database including: user mapping, owned schemas, database roles, explicit permissions on securables and extended properties. More detailed info within [documentation file](docs/SQL%20Server%20Database%20Restore%20-%20documentation.pdf).
 
 Table of contents:
   * [Technical preview](#technical-preview)
@@ -51,6 +51,16 @@ EXEC [master].[dbo].[RestoreDatabase]
 ```
 *@CheckModel parameter available since v1.2
 
+### Restore of database preserving permissions settings*
+```
+EXEC [master].[dbo].[RestoreDatabase]
+@BackupFile = N'\\Path\To\BackupFile\Backup.bak',
+@Database	= N'TestDB',
+@LogToTable = 'Y',
+@PreservePermissions = 'Y'
+```
+*@PreservePermissions parameter available since v1.3
+
 ### Restore of database that is joined in Availability Group
 ```
 EXEC [master].[dbo].[RestoreDatabase]
@@ -86,8 +96,9 @@ I’m assuming only following possible issues:
 And some other possible problems can be related to OH stuff in the solution so, please be so kind and try to check this FAQ https://ola.hallengren.com/frequently-asked-questions.html first before asking me directly.
 
 ## Versions
-* v1.1 - first sharable tested solution major bugs fixed
+* v1.3 - added possiblity to preserve original database permissions settings inlcuding custom roles and users with all securables (RestoreDatabase stored procedure)
 * v1.2 - added possiblity to set autogrowth for restored database based on model database settings (RestoreDatabase stored procedure)
+* v1.1 - first sharable tested solution major bugs fixed
 
 ## Reporting issues
 
