@@ -55,7 +55,7 @@ EXEC [master].[dbo].[RestoreDatabase]
 ```
 EXEC [master].[dbo].[RestoreDatabase]
 @BackupFile = N'\\Path\To\BackupFile\Backup.bak',
-@Database	= N'TestDB',
+@Database = N'TestDB',
 @LogToTable = 'Y',
 @PreservePermissions = 'Y'
 ```
